@@ -10,7 +10,7 @@ Send SMS messages through the LabsMobile platform and module for Vtiger. Just re
 
 ## Documentation
 
-Labsmobile API documentation can be found[here][apidocs].
+Labsmobile API documentation can be found [here][apidocs].
 
 ## Features
   - SMS notifications for your Vtiger contacts.
