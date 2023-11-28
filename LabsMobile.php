@@ -1,6 +1,6 @@
 <?php
 /*+**********************************************************************************
- *	LabsMobile Implementation on vtiger 6 plugin
+ *	LabsMobile Implementation on vtiger 7 plugin
  *
  * From: alphanumeric string (max 11 chars) or numeric sender
  * 
@@ -23,8 +23,6 @@
  *    With you admin user go to SMSNotifier -> Server configuration ->  New Configuration. 
  *    Select LabsMobile as supplier, your username and password and the default sender.
  ************************************************************************************/
- 
-define('NET_ERROR', 'Network+error-impossible+to+send+the+message');
 
 class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model {
 
@@ -32,8 +30,12 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 	private $password;
 	private $parameters = array();
 
-	const SERVICE_URI = 'https://api.labsmobile.com'; 
-	private static $REQUIRED_PARAMETERS = array('From'); // parameters specific of LabsMobile
+  const SERVICE_URI = 'http://api.labsmobile.com';
+  
+	private static $REQUIRED_PARAMETERS = array(
+		array('name' => 'Sender', 'label' => 'Sender', 'type' => 'text'),
+		array('name' => 'Charset', 'label' => 'Charset GSM or Unicode', 'type' => 'picklist', 'picklistvalues' => array('1' => 'GSM', '2' => 'Unicode'))
+	);
 
 	/**
 	 * Function to get provider name
@@ -58,9 +60,9 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 	public function getServiceURL($type = false) {
 		if($type) {
 			switch(strtoupper($type)) {
-				case self::SERVICE_AUTH: return  self::SERVICE_URI . '/';
-				case self::SERVICE_SEND: return  self::SERVICE_URI . '/get/send.php';
-				case self::SERVICE_QUERY: return self::SERVICE_URI . '/';
+        case self::SERVICE_AUTH: return self::SERVICE_URI . '/get/auth.php';
+				case self::SERVICE_SEND:	return self::SERVICE_URI . '/get/send.php?';
+				case self::SERVICE_QUERY:	return self::SERVICE_URI . '/get/ack.php?';
 			}
 		}
 		return false;
@@ -96,68 +98,73 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 			return $this->parameters[$key];
 		}
 		return $defaultValue;
-	}
-
-	/**
-	 * Function to prepare parameters
-	 * @return <Array> parameters
-	 */
-	protected function prepareParameters() {
-		$params = array('username' => $this->userName, 'password' => $this->password);
-		foreach (self::$REQUIRED_PARAMETERS as $key) {
-			$params[$key] = $this->getParameter($key);
-		}
-		return $params;
-	}
+  }
 
 	/**
 	 * Function to handle SMS Send operation
 	 * @param <String> $message
-	 * @param <Mixed> $recipients One or Array of numbers
+	 * @param <Mixed> $toNumbers One or Array of numbers
 	 */
-	public function send($message, $recipients) {
-		if(!is_array($recipients)) {
-			$recipients = array($recipients);
-		}
+	public function send($message, $toNumbers) {
+		if(!is_array($toNumbers)) {
+			$toNumbers = array($toNumbers);
+    }
+    
+    $toNumbers = $this->cleanNumbers($toNumbers);
+    $clientMessageReference = $this->generateClientMessageReference();
+    $response = $this->sendMessage($clientMessageReference, $message, $toNumbers);
+    return $this->processSendMessageResult($response, $clientMessageReference, $toNumbers);
+  }
+  
+  private function generateClientMessageReference() {
+		return uniqid();
+  }
+  
+  private function cleanNumbers($numbers) {
+		$pattern = '/[^\d]/';
+		$replacement = '';
+		return preg_replace($pattern, $replacement, $numbers);
+  }
+  
+  private function sendMessage($clientMessageReference, $message, $tonumbers) {
+    $sender = $this->getParameter('Sender', '');
+    $charset = $this->getParameter('Charset', '');
 
-		$params = $this->prepareParameters();
+    $serviceURL = $this->getServiceURL(self::SERVICE_SEND);
+		$serviceURL = $serviceURL . 'username=' . urlencode($this->userName) . '&';
+    $serviceURL = $serviceURL . 'password=' . urlencode($this->password) . '&';
+    $serviceURL = $serviceURL . 'msisdn=' . urlencode(implode(',', $tonumbers)) . '&';
+    $serviceURL = $serviceURL . 'message=' . urlencode(html_entity_decode($message)) . '&';
+    $serviceURL = $serviceURL . 'sender=' . urlencode($sender) . '&';
+    if($charset === '2') {
+      $serviceURL = $serviceURL . 'ucs2=1&';
+    }
+    $serviceURL = $serviceURL . 'subid=' . urlencode($clientMessageReference);
 
-			foreach($recipients as $key => $value){
-				if($params['Prefix'] && is_numeric($params['Prefix'])){
-					$finalRecipient = $params['Prefix'].$value;				
-				}
-				else{
-					$finalRecipient = $value;				
-				}
+		$httpClient = new Vtiger_Net_Client($serviceURL);
+		return $httpClient->doPost(array());
+  }
+  
+  private function processSendMessageResult($response, $clientMessageReference, $tonumbers) {
+    
+    $xmlNode = new SimpleXMLElement($response, LIBXML_NOCDATA);
 
-				// strip all non numeric 
-				$finalRecipient = preg_replace('/[^0-9]+/', '', $finalRecipient);
+    $results = array();
+    foreach ($tonumbers as $number) {
+      $result = array();
+      $result['to'] = $number;
 
-				// strip leading 0 and +
-				$finalRecipient = ltrim($finalRecipient, '0+');
-				$recipients[$key] = $finalRecipient;
-			}
+      if($xmlNode->code == 0) {
+        $result['id'] = $clientMessageReference . '--' . $number; 
+        $result['status'] = self::MSG_STATUS_PROCESSING;
+      } else {
+        $result['error'] = true; 
+        $result['statusmessage'] = $xmlNode->message;
+      }
 
-		$sender = $params['From'] ? $params['From'] : 'SMS';
-		$response = $this->labsmobileGatewaySendSMS($params['username'],$params['password'],$recipients,$message,$sender);
-
-		$results = array();
-		foreach($recipients as $to) {
-			$result = array(  'to' => $to );
-			if('success' == $response['status']){
-				$result['id'] = $response['id'] ? $response['id'] : $to;
-				$result['status'] = self::MSG_STATUS_DISPATCHED;
-				$result['error'] = false;
-				$result['statusmessage'] = 'Sent';
-			}
-			else{
-				$result['status'] = self::MSG_STATUS_FAILED;
-				$result['error'] = true;
-				$result['statusmessage'] = $result['message'];	
-			}
-			$results[] = $result;
-		}
-
+      $results[] = $result;
+    }
+    
 		return $results;
 	}
 
@@ -166,85 +173,53 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 	 * @param <Number> $messageId
 	 */
 	public function query($messageid) {
-		$result = array( 'error' => false, 'needlookup' => 1 );
-		$result['status'] = self::MSG_STATUS_DISPATCHED;
-		$result['needlookup'] = 0;
-		return $result;
+		$messageidSplit = split('--', $messageid);
+		$clientMessageReference = trim($messageidSplit[0]);
+		$number = trim($messageidSplit[1]);
+
+		$response = $this->queryMessage($clientMessageReference, $number);
+		return $this->processQueryMessageResult($response, $number);
+  }
+  
+  private function queryMessage($clientMessageReference, $number) {
+		$serviceURL = $this->getServiceURL(self::SERVICE_QUERY);
+		$serviceURL = $serviceURL . 'username=' . urlencode($this->userName) . '&';
+    $serviceURL = $serviceURL . 'password=' . urlencode($this->password) . '&';
+    $serviceURL = $serviceURL . 'subid=' . urlencode($clientMessageReference) . '&';
+		$serviceURL = $serviceURL . 'msisdn=' . urlencode($number);
+
+		$httpClient = new Vtiger_Net_Client($serviceURL);
+		return $httpClient->doPost(array());
+  }
+  
+  private function processQueryMessageResult($response) {
+
+    $xmlNode = new SimpleXMLElement($response, LIBXML_NOCDATA);
+    
+    $result = array();
+    $result['needlookup'] = 1;
+
+    switch($xmlNode->status) {
+      case 'error':
+        $result['error'] = true;
+        $result['statusmessage'] = $xmlNode->desc;
+        $result['status'] = self::MSG_STATUS_FAILED;
+        break;
+      case 'processed':
+      case 'operator':
+      case 'gateway':
+        $result['error'] = false;
+        $result['status'] = self::MSG_STATUS_PROCESSING;
+        break;
+      case 'handset':
+        $result['error'] = false;
+        $result['status'] = self::MSG_STATUS_DELIVERED;
+        break;
+
+    }
+
+    return $result;
+		
 	}
-	
-	function do_request($url, $data, $method = 'POST', $optional_headers = null){
-		if(!function_exists('curl_init')) {
-			$params = array(
-					'http' => array(
-							'method' => $method,
-							'content' => $data
-					)
-			);
-			if ($optional_headers !== null) {
-				$params['http']['header'] = $optional_headers;
-			}
-			$ctx = stream_context_create($params);
-			$fp = @fopen($url, 'rb', false, $ctx);
-			if (!$fp) {
-				return 'status=failed&message='.NET_ERROR;
-			}
-			$response = @stream_get_contents($fp);
-			if ($response === false) {
-				return 'status=failed&message='.NET_ERROR;
-			}
-			return $response;
-		} else {
-			$ch = curl_init();
-			curl_setopt($ch,CURLOPT_CONNECTTIMEOUT,10);
-			curl_setopt($ch,CURLOPT_RETURNTRANSFER,true);
-			curl_setopt($ch,CURLOPT_TIMEOUT,60);
-			curl_setopt($ch,CURLOPT_USERAGENT,'Generic Client');
-			if($method == 'POST'){
-				curl_setopt($ch,CURLOPT_POSTFIELDS,$data);	
-				curl_setopt($ch,CURLOPT_POST,true);
-			}
-			curl_setopt($ch,CURLOPT_URL,$url);
-	
-			if ($optional_headers !== null) {
-				curl_setopt($ch,CURLOPT_HTTPHEADER,$optional_headers);
-			}
-
-			$response = curl_exec($ch);
-			curl_close($ch);
-			if(!$response){
-				return 'status=failed&message='.NET_ERROR;
-			} else {
-				$ini_code = stripos($response, '<code>');
-				$end_code = stripos($response, '</code>');
-				$code = substr($response, $ini_code+6, $end_code-$ini_code-6);
-				
-				$ini_message = stripos($response, '<message>');
-				$end_message = stripos($response, '</message>');
-				$message = substr($response, $ini_message+6, $end_message-$ini_message-6);
-				
-				if($code == '0'){
-					return 'status=success&message='.$message;
-				} else {
-					return 'status=failed&message='.$message;
-				}
-			}
-			return $response;
-		}
-	}
-	
-	function labsmobileGatewaySendSMS($username,$password,$recipients,$text,$sender = 'SMS',$optional_headers=null) {
-		$url = $this->getServiceUrl(self::SERVICE_SEND)."/";
-	
-		$parameters = 'username='.urlencode($username).'&'
-			.'password='.urlencode($password).'&'
-			.'message='.urlencode($text).'&'
-			.'sender='.urlencode($sender).'&'
-			.'msisdn='.implode(',',$recipients);
-
-		$result = $this->do_request($url."?".$parameters, "", 'GET', $optional_headers);
-
-		return parse_str($result);
-	}
-
 }
 ?>
