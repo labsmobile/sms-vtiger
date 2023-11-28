@@ -4,7 +4,7 @@
 
 # LabsMobile-Moodle
 
-![](https://img.shields.io/badge/version-1.0.0-blue.svg)
+![](https://img.shields.io/badge/version-1.0.1-blue.svg)
  
 Send SMS messages through the LabsMobile platform and module for Vtiger. Just register and install the module to send SMS messages in seconds.
 
@@ -19,13 +19,13 @@ Labsmobile API documentation can be found[here][apidocs].
 
 ## Requirements
 
-- Vtiger v.5 More information at [Vtiger.com][vtiger].
-- LabsMobile SMS Notifier configuration for vTiger. More information at Vtiger v.5.
+- Vtiger v.6 More information at [Vtiger.com][vtiger].
+- LabsMobile SMS Notifier configuration for vTiger. More information at Vtiger v.6.
 - A user account with LabsMobile. Click on the link to create an account [here][signUp].
 
 ## Installation
 
-1. Instala el módulo en tu instalación de Vtiger v.5 Follow the instructions on the head module.
+1. Instala el módulo en tu instalación de Vtiger v.6 Follow the instructions on the head module.
 
 2. Configure the module with the parameters of your LabsMobile account.
 

@@ -1,70 +1,61 @@
 <?php
 /*+**********************************************************************************
- *	LabsMobile Implementation on vtiger 5 plugin
+ *	LabsMobile Implementation on vtiger 6 plugin
  *
  * From: alphanumeric string (max 11 chars) or numeric sender
  * 
  * IMPORTANT
  * 
- * In order to make SMSNotifier Module works, you have to: 
- * 1. Install the optional module SMSNotifier
+ * In order to make SMSNotifier Module works, you have to:
+ *  1. change line 35, in /modules/SMSNotifier/models/Provider.php
+ *
+ *    Change this:
+ *  
+ *	    if (!in_array($file, array('.', '..', 'MyProvider.php', 'CVS'))) {
  * 
- * 2. Copy this file into /modules/SMSNotifier/ext/providers/
+ *    to this:
+ *
+ *		if (!in_array($file, array('.', '..', 'MyProvider.php', 'SMSProvider.php'))) {
+ * 
+ * 2. Copy this file into /modules/SMSNotifier/providers/
  *
  * 3. Configure your LabsMobile details (username/passsword).
  *    With you admin user go to SMSNotifier -> Server configuration ->  New Configuration. 
  *    Select LabsMobile as supplier, your username and password and the default sender.
  ************************************************************************************/
-
-include_once dirname(__FILE__) . '/../ISMSProvider.php';
-
-//include_once 'vtlib/Vtiger/Net/Client.php'; // not used
-
+ 
 define('NET_ERROR', 'Network+error-impossible+to+send+the+message');
 
-/**
- *	LabsMobile Implementation on vtiger plugin
- *
- * From: alphanumeric string (max 11 chars) or numeric sender
- *
- */
+class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model {
 
-class LabsMobile implements ISMSProvider {
+	private $userName;
+	private $password;
+	private $parameters = array();
 
-	private $_username;
-	private $_password;
-	private $_parameters = array();
-
-	private $_enableLogging = false;
-	
-	// Skebby gateway
 	const SERVICE_URI = 'https://api.labsmobile.com'; 
 	private static $REQUIRED_PARAMETERS = array('From'); // parameters specific of LabsMobile
 
-	function __construct() {
-	}
-	
-	public function setAuthParameters($username, $password) {
-		$this->_username = $username;
-		$this->_password = $password;
-	}
-
-	public function setParameter($key, $value) {
-		$this->_parameters[$key] = $value;
-	}
-	
-	public function getParameter($key, $defvalue = false)  {
-		if(isset($this->_parameters[$key])) {
-			return $this->_parameters[$key];
-		}
-		return $defvalue;
+	/**
+	 * Function to get provider name
+	 * @return <String> provider name
+	 */
+	public function getName() {
+		return 'LabsMobile';
 	}
 
+	/**
+	 * Function to get required parameters other than (userName, password)
+	 * @return <array> required parameters list
+	 */
 	public function getRequiredParams() {
 		return self::$REQUIRED_PARAMETERS;
 	}
 
-	public function getServiceURL($type = false) {		
+	/**
+	 * Function to get service URL to use for a given type
+	 * @param <String> $type like SEND, PING, QUERY
+	 */
+	public function getServiceURL($type = false) {
 		if($type) {
 			switch(strtoupper($type)) {
 				case self::SERVICE_AUTH: return  self::SERVICE_URI . '/';
@@ -74,15 +65,50 @@ class LabsMobile implements ISMSProvider {
 		}
 		return false;
 	}
-	
-	protected function prepareParameters() { 
-		$params = array('username' => $this->_username, 'password' => $this->_password);
+
+	/**
+	 * Function to set authentication parameters
+	 * @param <String> $userName
+	 * @param <String> $password
+	 */
+	public function setAuthParameters($userName, $password) {
+		$this->userName = $userName;
+		$this->password = $password;
+	}
+
+	/**
+	 * Function to set non-auth parameter.
+	 * @param <String> $key
+	 * @param <String> $value
+	 */
+	public function setParameter($key, $value) {
+		$this->parameters[$key] = $value;
+	}
+
+	/**
+	 * Function to get parameter value
+	 * @param <String> $key
+	 * @param <String> $defaultValue
+	 * @return <String> value/$default value
+	 */
+	public function getParameter($key, $defaultValue = false) {
+		if(isset($this->parameters[$key])) {
+			return $this->parameters[$key];
+		}
+		return $defaultValue;
+	}
+
+	/**
+	 * Function to prepare parameters
+	 * @return <Array> parameters
+	 */
+	protected function prepareParameters() {
+		$params = array('username' => $this->userName, 'password' => $this->password);
 		foreach (self::$REQUIRED_PARAMETERS as $key) {
 			$params[$key] = $this->getParameter($key);
 		}
 		return $params;
 	}
-
 
 	/**
 	 * Function to handle SMS Send operation
@@ -134,7 +160,11 @@ class LabsMobile implements ISMSProvider {
 
 		return $results;
 	}
-	
+
+	/**
+	 * Function to get query for status using messgae id
+	 * @param <Number> $messageId
+	 */
 	public function query($messageid) {
 		$result = array( 'error' => false, 'needlookup' => 1 );
 		$result['status'] = self::MSG_STATUS_DISPATCHED;
@@ -217,3 +247,4 @@ class LabsMobile implements ISMSProvider {
 	}
 
 }
+?>
