@@ -21,7 +21,7 @@
  *
  * 3. Configure your LabsMobile details (username/passsword).
  *    With you admin user go to SMSNotifier -> Server configuration ->  New Configuration. 
- *    Select LabsMobile as supplier, your username and password and the default sender.
+ *    Select LabsMobile as supplier, your username and token and the default sender.
  ************************************************************************************/
 
 class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model {
@@ -30,9 +30,11 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 	private $password;
 	private $parameters = array();
 
-  const SERVICE_URI = 'http://api.labsmobile.com';
+  const SERVICE_URI = 'https://api.labsmobile.com';
   
 	private static $REQUIRED_PARAMETERS = array(
+		array('name' => 'Username', 'label' => 'Username', 'type' => 'text'),
+		array('name' => 'Token', 'label' => 'Token', 'type' => 'password'),
 		array('name' => 'Sender', 'label' => 'Sender', 'type' => 'text'),
 		array('name' => 'Charset', 'label' => 'Charset GSM or Unicode', 'type' => 'picklist', 'picklistvalues' => array('1' => 'GSM', '2' => 'Unicode'))
 	);
@@ -60,9 +62,9 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 	public function getServiceURL($type = false) {
 		if($type) {
 			switch(strtoupper($type)) {
-        case self::SERVICE_AUTH: return self::SERVICE_URI . '/get/auth.php';
-				case self::SERVICE_SEND:	return self::SERVICE_URI . '/get/send.php?';
-				case self::SERVICE_QUERY:	return self::SERVICE_URI . '/get/ack.php?';
+				case self::SERVICE_AUTH: return self::SERVICE_URI . '/get/auth.php';
+				case self::SERVICE_SEND: return self::SERVICE_URI . '/get/send.php?';
+				case self::SERVICE_QUERY: return self::SERVICE_URI . '/get/ack.php?';
 			}
 		}
 		return false;
@@ -128,11 +130,12 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
   
   private function sendMessage($clientMessageReference, $message, $tonumbers) {
     $sender = $this->getParameter('Sender', '');
+	$token = $this->getParameter('Token', '');
+	$username = $this->getParameter('Username', '');
     $charset = $this->getParameter('Charset', '');
-
     $serviceURL = $this->getServiceURL(self::SERVICE_SEND);
-		$serviceURL = $serviceURL . 'username=' . urlencode($this->userName) . '&';
-    $serviceURL = $serviceURL . 'password=' . urlencode($this->password) . '&';
+	$serviceURL = $serviceURL . 'username=' . urlencode($username) . '&';
+    $serviceURL = $serviceURL . 'password=' . urlencode($token) . '&';
     $serviceURL = $serviceURL . 'msisdn=' . urlencode(implode(',', $tonumbers)) . '&';
     $serviceURL = $serviceURL . 'message=' . urlencode(html_entity_decode($message)) . '&';
     $serviceURL = $serviceURL . 'sender=' . urlencode($sender) . '&';
@@ -142,24 +145,22 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
     $serviceURL = $serviceURL . 'subid=' . urlencode($clientMessageReference);
 
 		$httpClient = new Vtiger_Net_Client($serviceURL);
-		return $httpClient->doPost(array());
+		return $serviceURL . $httpClient->doGet(false);
   }
   
   private function processSendMessageResult($response, $clientMessageReference, $tonumbers) {
     
-    $xmlNode = new SimpleXMLElement($response, LIBXML_NOCDATA);
-
     $results = array();
     foreach ($tonumbers as $number) {
       $result = array();
       $result['to'] = $number;
 
-      if($xmlNode->code == 0) {
+      if(stripos($response, "successfully") !== FALSE) {
         $result['id'] = $clientMessageReference . '--' . $number; 
         $result['status'] = self::MSG_STATUS_PROCESSING;
       } else {
         $result['error'] = true; 
-        $result['statusmessage'] = $xmlNode->message;
+        $result['statusmessage'] = $response;
       }
 
       $results[] = $result;
@@ -182,10 +183,12 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
   }
   
   private function queryMessage($clientMessageReference, $number) {
+		$token = $this->getParameter('Token', '');
+		$username = $this->getParameter('Username', '');
 		$serviceURL = $this->getServiceURL(self::SERVICE_QUERY);
-		$serviceURL = $serviceURL . 'username=' . urlencode($this->userName) . '&';
-    $serviceURL = $serviceURL . 'password=' . urlencode($this->password) . '&';
-    $serviceURL = $serviceURL . 'subid=' . urlencode($clientMessageReference) . '&';
+		$serviceURL = $serviceURL . 'username=' . urlencode($username) . '&';
+    	$serviceURL = $serviceURL . 'password=' . urlencode($token) . '&';
+    	$serviceURL = $serviceURL . 'subid=' . urlencode($clientMessageReference) . '&';
 		$serviceURL = $serviceURL . 'msisdn=' . urlencode($number);
 
 		$httpClient = new Vtiger_Net_Client($serviceURL);
@@ -220,6 +223,10 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 
     return $result;
 		
+	}
+	
+	function getProviderEditFieldTemplateName() {
+		return 'BaseProviderEditFields.tpl';
 	}
 }
 ?>
