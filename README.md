@@ -4,7 +4,7 @@
 
 # LabsMobile-Moodle
 
-![](https://img.shields.io/badge/version-1.0.2-blue.svg)
+![](https://img.shields.io/badge/version-1.0.3-blue.svg)
  
 Send SMS messages through the LabsMobile platform and module for Vtiger. Just register and install the module to send SMS messages in seconds.
 
