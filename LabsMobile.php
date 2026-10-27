@@ -239,7 +239,8 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
 			.'password='.urlencode($password).'&'
 			.'message='.urlencode($text).'&'
 			.'sender='.urlencode($sender).'&'
-			.'msisdn='.implode(',',$recipients);
+			.'msisdn='.implode(',',$recipients).'&'
+    		.'log=5';
 
 		$result = $this->do_request($url."?".$parameters, "", 'GET', $optional_headers);
 
