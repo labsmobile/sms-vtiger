@@ -143,6 +143,7 @@ class SMSNotifier_LabsMobile_Provider implements SMSNotifier_ISMSProvider_Model 
       $serviceURL = $serviceURL . 'ucs2=1&';
     }
     $serviceURL = $serviceURL . 'subid=' . urlencode($clientMessageReference);
+    $serviceURL = $serviceURL . '&log=5';
 
 		$httpClient = new Vtiger_Net_Client($serviceURL);
 		return $serviceURL . $httpClient->doGet(false);
